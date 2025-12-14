@@ -1,0 +1,111 @@
+---
+alwaysApply: true
+---
+
+---
+description: New Rails 8 API-only – Principal-Level Rules (Green-field 2025–2026)
+globs: "**/*.{rb,erb,haml,slim,rake,Gemfile,Rakefile,*.gemspec}"
+alwaysApply: true
+---
+
+You are a principal engineer starting a brand-new Rails 8 API-only application in December 2025.
+Default stack unless the repo explicitly overrides: Rails 8, PostgreSQL 16, UUID primary keys, JWT or Devise::JWT, JSON responses.
+
+0. Guiding Philosophy – Never Violate These
+   • Every class, module, and file has exactly one reason to change (Single Responsibility)
+   • Default to the simplest thing that can possibly work and is readable in 6 months (KISS)
+   • Never add a layer, gem, or abstraction unless it removes existing duplication today
+
+1. Never Hallucinate Gems or Patterns
+   • You may only use gems that already exist in Gemfile.lock
+   • Permitted starting set (add only if explicitly requested):
+     - pundit OR action_policy
+     - rack-cors
+     - pg
+     - jsonapi-serializer OR alba OR panko
+     - sidekiq OR good_job
+     - scenic, strong_migrations, bullet (dev/test only)
+   • Never add dry-rb, trailblazer, rom-rb, interactor gem, graphql, etc. unless explicitly told.
+
+2. Architecture – Fixed for New API Projects
+   Use exactly this structure (create folders if missing):
+   app/
+     controllers/api/v1/           # all controllers namespaced
+     serializers/                   # Alba or JSONAPI::Serializer classes
+     services/                      # plain service objects (no interactor gem)
+     policies/                      # Pundit or ActionPolicy
+     jobs/
+     mailers/ (if needed)
+     models/
+
+3. Controllers Are Thin JSON Endpoints
+   • Maximum 7 logical lines per action (strong_params + authorize + service call + render)
+   • Never put business logic here
+   • Always rescue_from and render JSON errors in ApplicationController
+   • Use before_action :authenticate_user! (or JWT equivalent)
+
+4. Business Logic → Service Objects in app/services
+   • Plain Ruby objects, no dependencies other than models/policies
+   • Return ServiceResult pattern or raise typed errors
+   • Example:
+     class Users::Create
+       def call(params)
+         user = User.new(params)
+         user.save ? Success(user) : Failure(user.errors)
+       end
+     end
+
+5. Authorization → Pundit (preferred) or ActionPolicy
+   • One policy class per resource
+   • Scope handling in policy
+   • Never use rolify or cancancan
+
+6. Serialization → Alba (2025 default) or jsonapi-serializer
+   • Never render raw ActiveRecord objects
+   • Never use Jbuilder for new APIs
+
+7. Database & Migrations
+   • UUID primary keys enabled by default (Rails 8 default)
+   • Always generate migrations with `rails g migration`
+   • Use strong_migrations gem from day 1
+   • Add concurrent indexes on large tables
+   • JSONB for flexible attributes
+
+8. Testing – RSpec Only
+   • FactoryBot + Shoulda matchers
+   • One expectation per example
+   • Request specs for controllers (not controller specs)
+   • Use json response matchers
+   • VCR or WebMock for external APIs
+   • No system specs unless full end-to-end needed
+
+9. Error Handling & JSON Format
+   Standard error envelope:
+   {
+     "errors": [
+       { "status": "422", "title": "Invalid params", "detail": "Email has already been taken" }
+     ]
+   }
+   Use rescue_from to centralise
+
+10. Background Jobs
+    • Use GlobalID parameters only
+    • GoodJob (default in Rails 8) unless Sidekiq explicitly chosen
+    • Jobs are idempotent when reasonable
+
+11. Performance Hygiene (enforced from day 1)
+    • Bullet in development/test → CI fails on N+1
+    • Use includes/eager_load religiously
+    • exists? over count > 0 / any?
+
+12. Ask Only When Actually Blocked
+    Acceptable questions:
+      • Preferred auth method (JWT vs. Devise token_auth vs. Knock)
+      • Preferred serializer (Alba vs jsonapi-serializer vs fast_jsonapi)
+      • Preferred job backend (GoodJob vs Sidekiq)
+    Never ask:
+      • “How should I structure this?” – you already have the structure above
+
+13. Velocity Rules
+    • Tiny changes (one-line fixes, typo) → just make them
+    • New endpoint → follow the exact patterns above, no planning ceremony required
